@@ -1,144 +1,103 @@
-README: Projeto de Análise de "Redos" - Datalyt
-1. Visão Geral do Projeto
-Este projeto foi desenvolvido para atender à necessidade de uma empresa de controle de pragas de entender e mitigar os altos custos e a frequência de "redos" (retrabalhos) em seus serviços. O objetivo central do dashboard é identificar os funcionários responsáveis pela causa raiz dos "redos", analisar o impacto financeiro e de clientes, e fornecer insights para a melhoria contínua dos processos.
 
-Link para o projeto: https://app.powerbi.com/view?r=eyJrIjoiZWFmNDFmNDctMzQzZS00N2RmLThiODktNjViNDNhNjJmZGVhIiwidCI6IjY1OWNlMmI4LTA3MTQtNDE5OC04YzM4LWRjOWI2MGFhYmI1NyJ9
+# 📊 Projeto de Análise de Redos - Datalyt
 
-O dashboard foi estruturado para responder às seguintes perguntas de negócio:
+## 1. Visão Geral do Projeto
 
-Quais funcionários estão causando o maior prejuízo com "redos"?
+Este projeto foi desenvolvido para atender à necessidade de uma empresa de controle de pragas de entender e mitigar os altos custos e a frequência de **"redos"** (retrabalhos) em seus serviços.
 
-O problema dos "redos" está melhorando ou piorando ao longo do tempo?
+O objetivo central do dashboard é:
+- Identificar os funcionários responsáveis pela causa raiz dos "redos";
+- Analisar o impacto financeiro e de clientes;
+- Fornecer insights para a melhoria contínua dos processos.
 
-Qual é o ranking mensal de performance dos funcionários em relação aos "redos"?
+🔗 [Acesse o Dashboard no Power BI](https://app.powerbi.com/view?r=eyJrIjoiZWFmNDFmNDctMzQzZS00N2RmLThiODktNjViNDNhNjJmZGVhIiwidCI6IjY1OWNlMmI4LTA3MTQtNDE5OC04YzM4LWRjOWI2MGFhYmI1NyJ9)
 
-Qual o impacto financeiro real (lucratividade e perdas) do problema?
+### Perguntas de Negócio Respondidas:
+- Quais funcionários estão causando o maior prejuízo com "redos"?
+- O problema dos "redos" está melhorando ou piorando ao longo do tempo?
+- Qual o ranking mensal de performance dos funcionários em relação aos "redos"?
+- Qual o impacto financeiro real (lucratividade e perdas) do problema?
+- Existem clientes ou áreas geográficas com maior concentração de problemas?
 
-Existem clientes ou áreas geográficas com maior concentração de problemas?
+## 2. Fonte de Dados
 
-2. Fonte de Dados
-A análise foi baseada em uma única fonte de dados, conforme especificado no desafio:
+- **Sistema Gerenciador:** PostgreSQL  
+- **Servidor:** `ep-sweet-hall-a81n9c4c.eastus2.azure.neon.tech`  
+- **Banco de Dados:** `neondb`  
+- **Schema:** `public`  
+- **Tabela:** `jobs`  
 
-Sistema Gerenciador: PostgreSQL
+A conexão com o Power BI foi realizada via conector nativo PostgreSQL, em **modo Importação** (Import Mode), garantindo desempenho e capacidade de transformação no Power Query.
 
-Servidor: ep-sweet-hall-a81n9c4c.eastus2.azure.neon.tech
+## 3. Tratamento e Transformação de Dados (Power Query)
 
-Banco de Dados: neondb
+A lógica central foi identificar corretamente o responsável por um "redo", considerando a visita anterior no mesmo serviço. As principais etapas foram:
 
-Schema: public
+### Etapas Realizadas:
+- **Divisão da Coluna `job_number`:** Separação por "-" criando `ID_Servico` e `Num_Visita`.
+- **Ordenação Cronológica:** Por `ID_Servico` e `Num_Visita` para garantir a sequência lógica das visitas.
+- **Adição de Índice:** Para possibilitar o acesso à linha anterior.
+- **Criação da Coluna `Responsavel_Redo`:**  
+  ```m
+  try if [visit_type] = "redo" and #"EtapaAnterior"{[Índice]-1}[ID_Servico] = [ID_Servico] 
+  then #"EtapaAnterior"{[Índice]-1}[employee_name] 
+  else null 
+  otherwise null
+  ```
+- **Criação da Coluna `Custo_Redo`:**  
+  ```m
+  if [visit_type] = "redo" then [visit_cost_dollars] else 0
+  ```
+- **Ajuste de Tipos de Dados:** Datas, números e textos foram revisados e convertidos corretamente.
 
-Tabela: jobs
+## 4. Modelo de Dados e Medidas DAX
 
-A conexão no Power BI foi feita utilizando o conector nativo do PostgreSQL, em modo Importação (Import Mode), para garantir a melhor performance durante a análise e a possibilidade de realizar transformações complexas no Power Query.
+O modelo possui:
+- A tabela tratada `jobs`;
+- Uma tabela calendário gerada com `CALENDARAUTO()`.
 
-3. Tratamento e Transformação de Dados (Power Query)
-A etapa de transformação foi a mais crítica do projeto. A lógica principal foi desenvolvida para atribuir corretamente a responsabilidade de um "redo" ao funcionário que realizou a visita anterior no mesmo serviço.
+### Principais Medidas DAX:
 
-As seguintes etapas foram aplicadas no Editor do Power Query:
+| Medida                | Fórmula DAX                                                                                  | Propósito                                                                 |
+|-----------------------|----------------------------------------------------------------------------------------------|---------------------------------------------------------------------------|
+| **Custo Total Redos** | `SUM('jobs'[Custo_Redo])`                                                                    | Calcula o prejuízo financeiro direto dos "redos".                        |
+| **Qtd Redos Causados**| `COUNT('jobs'[Responsavel_Redo])`                                                            | Conta o número total de retrabalhos com responsável identificado.         |
+| **Taxa de Redo**      | `DIVIDE([Qtd Redos Causados], COUNTROWS('jobs'))`                                           | Percentual de visitas que geraram retrabalho.                            |
+| **Ranking Redo**      | `RANKX(ALLSELECTED('jobs'[Responsavel_Redo]), CALCULATE([Qtd Redos Causados]), , DESC)`     | Ranking dinâmico de funcionários.                                        |
+| **Lucro Total**       | `[Receita Total] - [Custo Total Redos]`                                                      | Mede a lucratividade real do negócio.                                    |
+| **Nº de Clientes**    | `DISTINCTCOUNT('jobs'[customer_name])`                                                       | Quantidade de clientes únicos atendidos.                                 |
 
-Divisão da Coluna job_number: A coluna foi dividida pelo delimitador "-" para criar ID_Servico e Num_Visita, permitindo a ordenação correta das visitas.
+## 5. Estrutura e Navegação do Dashboard
 
-Ordenação Cronológica: A tabela foi ordenada primeiramente por ID_Servico (crescente) e depois por Num_Visita (crescente). Esta etapa é essencial para garantir que a lógica de "olhar para a linha anterior" funcione corretamente.
+O dashboard foi dividido em **duas páginas** com foco em **diagnóstico** e **impacto**.
 
-Adição de Coluna de Índice: Uma coluna de índice (iniciando em 0) foi adicionada para permitir a referência a linhas anteriores na tabela.
+### 📌 Página 1: Análise da Causa Raiz
+- **Objetivo:** Identificar quem está causando os redos e acompanhar tendências.
+- **Visuais e Respostas:**
+  - **Funcionários com Maior Custo de Redo** → Quem causa mais prejuízo.
+  - **Evolução do Custo com Redos** → Problema está melhorando ou não.
+  - **Matriz de Ranking Mensal** → Performance mensal por funcionário.
 
-Criação da Coluna Responsavel_Redo: Utilizando uma Coluna Personalizada, a seguinte lógica M foi implementada para identificar o verdadeiro responsável:
+### 📌 Página 2: Análise de Impacto (Clientes e Finanças)
+- **Objetivo:** Avaliar consequências dos redos para o negócio.
+- **Visuais e Respostas:**
+  - **Lucro por Tipo de Visita** → Mostra o impacto direto do redo no resultado.
+  - **KPI Lucro Total** → Resultado final do negócio.
+  - **Clientes Menos Lucrativos** → Relação com recorrência de redos.
+  - **Mapa de Concentração de Redos** → Diagnóstico geográfico do problema.
 
-// Para cada linha, verifica se o tipo é "redo" e se a visita anterior pertence ao mesmo serviço.
-// Se sim, retorna o nome do funcionário da visita anterior.
-try if [visit_type] = "redo" and #"EtapaAnterior"{[Índice]-1}[ID_Servico] = [ID_Servico] then #"EtapaAnterior"{[Índice]-1}[employee_name] else null otherwise null
+## 6. Consultas SQL (Para Validação e Análises Adicionais)
 
-Criação da Coluna Custo_Redo: Uma coluna condicional foi criada para isolar o custo associado apenas às visitas de retrabalho, facilitando as medidas DAX posteriores.
-
-if [visit_type] = "redo" then [visit_cost_dollars] else 0
-
-Ajuste de Tipos de Dados: Todos os tipos de dados foram revisados e ajustados (Datas, Números Decimais, Texto) para garantir a integridade dos cálculos.
-
-4. Modelo de Dados e Medidas DAX
-O modelo de dados é composto pela tabela jobs (tratada) e uma tabela Calendario desconectada, criada com CALENDARAUTO() para facilitar as análises de tempo.
-
-As seguintes medidas DAX foram criadas para alimentar os visuais:
-
-Medida
-
-Fórmula DAX
-
-Propósito
-
-Custo Total Redos
-
-SUM('jobs'[Custo_Redo])
-
-Calcula o prejuízo financeiro direto causado pelos "redos".
-
-Qtd Redos Causados
-
-COUNT('jobs'[Responsavel_Redo])
-
-Conta o volume total de retrabalhos causados.
-
-Taxa de Redo
-
-DIVIDE([Qtd Redos Causados], COUNTROWS('jobs'))
-
-Mede a eficiência operacional (percentual de visitas que viram redo).
-
-Ranking Redo
-
-RANKX(ALLSELECTED('jobs'[Responsavel_Redo]), CALCULATE([Qtd Redos Causados]), , DESC)
-
-Cria o ranking dinâmico de funcionários, essencial para a matriz mensal.
-
-Lucro Total
-
-[Receita Total] - [Custo Total]
-
-Apresenta a saúde financeira real do negócio, considerando o impacto dos custos.
-
-Nº de Clientes
-
-DISTINCTCOUNT('jobs'[customer_name])
-
-Conta o número de clientes únicos atendidos.
-
-5. Estrutura e Respostas do Dashboard
-O dashboard foi dividido em duas páginas para contar uma história coesa.
-
-Página 1: Análise da Causa Raiz
-Objetivo: Diagnosticar o problema dos "redos".
-
-Respostas Fornecidas:
-
-Quem causa mais redos? O gráfico de barras "Funcionários com Maior Custo de Redo" aponta diretamente os principais responsáveis.
-
-O problema está melhorando? O gráfico de linhas "Evolução do Custo com Redos" mostra a tendência histórica, permitindo avaliar a eficácia de ações corretivas.
-
-Qual a performance mensal? A Matriz de Ranking Mensal detalha a performance de cada funcionário, mês a mês.
-
-Página 2: Análise de Impacto (Clientes e Finanças)
-Objetivo: Analisar as consequências do problema.
-
-Respostas Fornecidas:
-
-Qual o impacto na lucratividade? O gráfico "Lucro Gerado por Tipo de Visita" prova visualmente o prejuízo do "redo". O KPI "Lucro Total" mostra o resultado final.
-
-Quais clientes são mais afetados? O ranking de "Clientes Menos Lucrativos" pode estar correlacionado com clientes que sofrem múltiplos "redos".
-
-Existe concentração geográfica? O Mapa de "Concentração de Custo com Redos" ajuda a identificar se o problema é mais intenso em certas regiões.
-
-6. Consultas SQL (Para Fins de Consulta)
-Conforme solicitado, seguem algumas consultas em PostgreSQL que podem ser usadas para exploração e validação dos dados diretamente no banco.
-
-1. Consulta para listar todas as visitas de um serviço específico (ex: '1001'):
-
+### 🔍 1. Visitas de um serviço específico:
+```sql
 SELECT *
 FROM public.jobs
 WHERE job_number LIKE '1001-%'
 ORDER BY job_number;
+```
 
-2. Consulta para contar o número de "redos" por funcionário que realizou a visita:
-(Nota: Esta consulta não atribui a culpa ao funcionário anterior como fizemos no Power BI, ela apenas conta quem executou a visita de "redo").
-
+### 🔍 2. Redos executados por funcionário (sem atribuição de culpa):
+```sql
 SELECT
     employee_name,
     COUNT(*) AS total_redos_executados
@@ -146,9 +105,10 @@ FROM public.jobs
 WHERE visit_type = 'redo'
 GROUP BY employee_name
 ORDER BY total_redos_executados DESC;
+```
 
-3. Consulta para ver o custo total e receita por cliente:
-
+### 🔍 3. Custo, Receita e Lucro por Cliente:
+```sql
 SELECT
     customer_name,
     SUM(visit_cost_dollars) AS custo_total,
@@ -157,3 +117,8 @@ SELECT
 FROM public.jobs
 GROUP BY customer_name
 ORDER BY lucro_total DESC;
+```
+
+## 📌 Conclusão
+
+Este projeto fornece uma abordagem prática e visualmente clara para entender o impacto dos retrabalhos operacionais em uma empresa de serviços. A análise permite decisões orientadas por dados, com foco em melhoria contínua e performance financeira.
